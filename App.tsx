@@ -9,13 +9,13 @@ import {
     BeakerIcon, 
     BoltIcon, 
     ArrowPathIcon,
-    ChartBarIcon,
     ArrowUturnLeftIcon,
     CheckCircleIcon,
     LightBulbIcon,
     XCircleIcon,
     InformationCircleIcon,
-    XMarkIcon
+    XMarkIcon,
+    HomeIcon
 } from '@heroicons/react/24/outline';
 
 const App: React.FC = () => {
@@ -24,7 +24,6 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<OrbitalData[][]>([]);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
   const [isLoadingHint, setIsLoadingHint] = useState(false);
-  const [viewMode, setViewMode] = useState<'simulation' | 'challenge'>('simulation');
 
   // Derived Stats
   const electronsPlaced = orbitals.reduce((acc, o) => acc + o.electrons, 0);
@@ -276,23 +275,20 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex gap-2">
-             <button 
-                onClick={() => { setViewMode('simulation'); audioService.playSwitch(); }}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === 'simulation' ? 'bg-neon-blue text-black shadow-[0_0_10px_rgba(0,243,255,0.4)]' : 'bg-white/5 hover:bg-white/10'}`}
-             >
-                Simulation
-             </button>
-             <button 
-                onClick={() => { setViewMode('challenge'); audioService.playSwitch(); }}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${viewMode === 'challenge' ? 'bg-neon-yellow text-black shadow-[0_0_10px_rgba(252,238,10,0.4)]' : 'bg-white/5 hover:bg-white/10'}`}
-             >
-                Challenge
-             </button>
+            <a 
+                href="https://ai.studio/apps/drive/1hh2BRHWm0KB4Wej4z3tSpDYygw3-LI5k?fullscreenApplet=true"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => audioService.playSwitch()}
+                className="px-4 py-2 rounded-full text-sm font-medium bg-white/5 hover:bg-white/10 text-white flex items-center gap-2 transition-all border border-white/5 hover:border-white/20 hover:text-neon-blue hover:shadow-[0_0_10px_rgba(0,243,255,0.2)]"
+            >
+                <HomeIcon className="w-4 h-4" />
+                Back to Home
+            </a>
         </div>
       </header>
 
       {/* Main Content */}
-      {viewMode === 'simulation' ? (
       <div className="flex flex-1 overflow-hidden relative z-10">
           {/* Sidebar Controls */}
           <div className="w-80 bg-dark-900/50 border-r border-white/10 p-6 flex flex-col gap-6 overflow-y-auto z-10 custom-scrollbar backdrop-blur-sm">
@@ -528,48 +524,6 @@ const App: React.FC = () => {
               
           </div>
       </div>
-      ) : (
-          // Challenge View
-          <div className="flex-1 flex items-center justify-center p-10 relative z-10">
-              <div className="max-w-2xl w-full bg-dark-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-8 text-center shadow-2xl">
-                  <ChartBarIcon className="w-16 h-16 text-neon-yellow mx-auto mb-6 drop-shadow-[0_0_10px_rgba(252,238,10,0.5)]" />
-                  <h2 className="text-3xl font-bold text-white mb-4">Stability Challenge</h2>
-                  <p className="text-gray-400 mb-8">
-                      Can you predict the stability ranking of the Oxygen species?
-                      <br/>
-                      <span className="text-neon-blue">O₂⁺</span> vs <span className="text-neon-green">O₂</span> vs <span className="text-neon-red">O₂⁻</span>
-                  </p>
-                  
-                  <div className="grid grid-cols-3 gap-4 mb-8">
-                      <div className="p-4 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors">
-                          <div className="text-xl font-bold mb-2">O₂⁺</div>
-                          <div className="text-sm text-gray-500">1 removed from π*</div>
-                          <div className="text-neon-green font-bold mt-2">BO = 2.5</div>
-                          <div className="text-xs text-gray-400 mt-1">Most Stable</div>
-                      </div>
-                      <div className="p-4 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors">
-                          <div className="text-xl font-bold mb-2">O₂</div>
-                          <div className="text-sm text-gray-500">Standard</div>
-                          <div className="text-white font-bold mt-2">BO = 2.0</div>
-                          <div className="text-xs text-gray-400 mt-1">Stable</div>
-                      </div>
-                      <div className="p-4 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors">
-                          <div className="text-xl font-bold mb-2">O₂⁻</div>
-                          <div className="text-sm text-gray-500">1 added to π*</div>
-                          <div className="text-neon-yellow font-bold mt-2">BO = 1.5</div>
-                          <div className="text-xs text-gray-400 mt-1">Less Stable</div>
-                      </div>
-                  </div>
-                  
-                  <button 
-                    onClick={() => { setViewMode('simulation'); audioService.playSwitch(); }}
-                    className="px-8 py-3 bg-white text-black font-bold rounded-full hover:bg-gray-200 transition shadow-[0_0_20px_rgba(255,255,255,0.3)]"
-                  >
-                      Back to Lab
-                  </button>
-              </div>
-          </div>
-      )}
     </div>
   );
 };

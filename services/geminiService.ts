@@ -1,12 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 import { SimulationState } from '../types';
 
-// Initialize Gemini Client
-// API Key is expected to be in process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize Gemini Client Lazily
+// This prevents "process is not defined" errors during initial module load in some browser environments
+const getAiClient = () => {
+  // @ts-ignore: Prevent TS error if process is not typed globally
+  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+  return new GoogleGenAI({ apiKey });
+};
 
 export const getConfigurationHint = async (state: SimulationState): Promise<string> => {
   try {
+    const ai = getAiClient();
     const modelId = 'gemini-2.5-flash';
     const prompt = `
       You are a helpful Chemistry Tutor assisting a student with filling a Molecular Orbital (MO) diagram for ${state.molecule.formula} (${state.molecule.name}).
@@ -43,6 +48,7 @@ export const getConfigurationHint = async (state: SimulationState): Promise<stri
 
 export const getChallengeHint = async (molecules: string[]): Promise<string> => {
     try {
+        const ai = getAiClient();
         const modelId = 'gemini-2.5-flash';
         const prompt = `
           Compare the stability of these species: ${molecules.join(', ')}.
