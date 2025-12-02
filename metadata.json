@@ -1,0 +1,5 @@
+{
+  "name": "Orbital Master: MO Theory Level 5",
+  "description": "An advanced interactive Molecular Orbital Theory simulator. Build electron configurations for O₂, N₂, and He₂, calculate bond orders, visualize paramagnetism, and predict molecular stability using Gemini AI for deep insights.",
+  "requestFramePermissions": []
+}
