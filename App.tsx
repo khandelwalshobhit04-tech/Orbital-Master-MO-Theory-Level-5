@@ -114,38 +114,31 @@ const App: React.FC = () => {
       
       const canAdd = electronsPlaced < currentMolecule.totalElectrons;
       
-      // Cycle Logic: 0 -> 1 -> 2 -> 1 -> 0
+      // Cycle Logic: 0 -> 1 -> 2 -> 0 (standard pairing cycle)
       if (orb.electrons < orb.capacity) {
-         // Current state allows adding (0 or 1)
          if (canAdd) {
-             // We have budget, so Add
              newOrbitals[orbIndex] = { ...orb, electrons: orb.electrons + 1 };
              setHistory(prev => [...prev, orbitals]);
              setOrbitals(newOrbitals);
              setFeedback(null);
              audioService.playOrbitalAdd();
          } else {
-             // No budget! 
              if (orb.electrons > 0) {
-                 newOrbitals[orbIndex] = { ...orb, electrons: orb.electrons - 1 };
+                 newOrbitals[orbIndex] = { ...orb, electrons: 0 };
                  setHistory(prev => [...prev, orbitals]);
                  setOrbitals(newOrbitals);
-                 setFeedback({ 
-                    type: 'error', 
-                    message: `Limit reached (${currentMolecule.totalElectrons}e⁻)! Removing electron instead.` 
-                 });
-                 audioService.playLimitReached();
+                 setFeedback(null);
+                 audioService.playOrbitalRemove();
              } else {
                  setFeedback({ 
                     type: 'error', 
-                    message: `All ${currentMolecule.totalElectrons} electrons are already placed. Remove some first.` 
+                    message: `All ${currentMolecule.totalElectrons} electrons are already placed.` 
                  });
                  audioService.playError();
              }
          }
       } else {
-         // At capacity (2), so Remove (-> 1)
-         newOrbitals[orbIndex] = { ...orb, electrons: orb.electrons - 1 };
+         newOrbitals[orbIndex] = { ...orb, electrons: 0 };
          setHistory(prev => [...prev, orbitals]);
          setOrbitals(newOrbitals);
          setFeedback(null);
@@ -153,11 +146,9 @@ const App: React.FC = () => {
       }
   };
 
-  // Helper to get the correct configuration for the current molecule
-  const getCorrectConfiguration = useCallback(() => {
+  const handleAutoFill = () => {
       let remaining = currentMolecule.totalElectrons;
       const newOrbitals = generateOrbitals(currentMolecule.ordering);
-      
       const sortedOrbitals = [...newOrbitals].sort((a, b) => a.energyLevel - b.energyLevel);
       
       const energyGroups = new Map<number, OrbitalData[]>();
@@ -170,71 +161,84 @@ const App: React.FC = () => {
 
       for (const energy of energies) {
           const group = energyGroups.get(energy)!;
-          // Fill 1 electron in each first (Hund's Rule)
           for (const orb of group) {
               if (remaining > 0) {
-                  const realOrb = newOrbitals.find(o => o.id === orb.id)!;
-                  realOrb.electrons = 1;
+                  const target = newOrbitals.find(o => o.id === orb.id)!;
+                  target.electrons = 1;
                   remaining--;
               }
           }
-          // Pair up
           for (const orb of group) {
               if (remaining > 0) {
-                   const realOrb = newOrbitals.find(o => o.id === orb.id)!;
-                   if (realOrb.electrons === 1) {
-                       realOrb.electrons = 2;
+                   const target = newOrbitals.find(o => o.id === orb.id)!;
+                   if (target.electrons === 1) {
+                       target.electrons = 2;
                        remaining--;
                    }
               }
           }
       }
-      return newOrbitals;
-  }, [currentMolecule]);
-
-  const handleAutoFill = () => {
       setHistory(prev => [...prev, orbitals]);
-      setOrbitals(getCorrectConfiguration());
+      setOrbitals(newOrbitals);
       setFeedback(null);
-      audioService.playSuccess(); // Satisfying fill sound
+      audioService.playSuccess();
   };
 
   const handleCheck = () => {
-      const correctConfig = getCorrectConfiguration();
-      const currentMap = new Map(orbitals.map(o => [o.id, o.electrons]));
-      
-      let isCorrect = true;
-      for (const target of correctConfig) {
-          if (currentMap.get(target.id) !== target.electrons) {
-              isCorrect = false;
-              break;
-          }
+      // 1. Check total count
+      if (electronsPlaced !== currentMolecule.totalElectrons) {
+          setFeedback({ 
+              type: 'error', 
+              message: `Incorrect electron count. ${currentMolecule.formula} needs ${currentMolecule.totalElectrons}e⁻, you placed ${electronsPlaced}.` 
+          });
+          audioService.playError();
+          return;
       }
 
-      if (isCorrect) {
-          setFeedback({ 
-              type: 'success', 
-              message: `Perfect! The ground state configuration for ${currentMolecule.formula} is correct. Bond Order: ${bondOrder}.` 
-          });
-          audioService.playSuccess();
-      } else {
-          audioService.playError();
-          if (electronsPlaced !== currentMolecule.totalElectrons) {
-               setFeedback({ 
-                   type: 'error', 
-                   message: `Incorrect total electrons. You have placed ${electronsPlaced}, but ${currentMolecule.formula} has ${currentMolecule.totalElectrons}.` 
-               });
-          } else {
-               setFeedback({ 
-                   type: 'error', 
-                   message: "Electron configuration is incorrect. Check energy levels (Aufbau) and electron pairing (Hund's Rule)." 
-               });
+      // 2. Group by energy level to check Aufbau and Hund's
+      const energyGroups = new Map<number, OrbitalData[]>();
+      orbitals.forEach(o => {
+          if (!energyGroups.has(o.energyLevel)) energyGroups.set(o.energyLevel, []);
+          energyGroups.get(o.energyLevel)?.push(o);
+      });
+
+      const sortedEnergies = Array.from(energyGroups.keys()).sort((a, b) => a - b);
+      let lowerLevelFull = true;
+
+      for (let i = 0; i < sortedEnergies.length; i++) {
+          const energy = sortedEnergies[i];
+          const group = energyGroups.get(energy)!;
+          const totalInGroup = group.reduce((sum, o) => sum + o.electrons, 0);
+          const capacityInGroup = group.length * 2;
+          const hasUnfilledOrbital = group.some(o => o.electrons === 0);
+          const hasPairedElectron = group.some(o => o.electrons === 2);
+
+          // Aufbau: If this level has electrons, but the previous wasn't full
+          if (totalInGroup > 0 && !lowerLevelFull) {
+              setFeedback({ type: 'error', message: "Aufbau Principle violated: Lower energy levels must be completely filled first." });
+              audioService.playError();
+              return;
           }
+
+          // Hund's Rule: If there are pairs but also empty orbitals at the same energy level
+          if (hasPairedElectron && hasUnfilledOrbital) {
+              setFeedback({ type: 'error', message: "Hund's Rule violated: Degenerate orbitals must be occupied singly before pairing." });
+              audioService.playError();
+              return;
+          }
+
+          lowerLevelFull = totalInGroup === capacityInGroup;
       }
+
+      setFeedback({ 
+          type: 'success', 
+          message: `Correct! You've successfully configured the ground state for ${currentMolecule.formula}.` 
+      });
+      audioService.playSuccess();
   };
 
   const handleHint = async () => {
-      audioService.playOrbitalAdd(); // Subtle click for hint request
+      audioService.playOrbitalAdd();
       setIsLoadingHint(true);
       const state: SimulationState = {
           molecule: currentMolecule,
@@ -251,8 +255,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-[#050510] text-white font-sans relative">
-      
-      {/* Background Texture - Scientific Grid */}
       <div className="absolute inset-0 opacity-10 pointer-events-none" 
            style={{ 
                backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)', 
@@ -260,7 +262,6 @@ const App: React.FC = () => {
            }}>
       </div>
 
-      {/* Header */}
       <header className="bg-dark-900/60 border-b border-white/10 p-4 backdrop-blur-md flex justify-between items-center sticky top-0 z-50 shadow-lg">
         <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-neon-blue/20 rounded-lg flex items-center justify-center border border-neon-blue/50 shadow-[0_0_15px_rgba(0,243,255,0.3)]">
@@ -288,12 +289,8 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden relative z-10">
-          {/* Sidebar Controls */}
           <div className="w-80 bg-dark-900/50 border-r border-white/10 p-6 flex flex-col gap-6 overflow-y-auto z-10 custom-scrollbar backdrop-blur-sm">
-              
-              {/* Molecule Selector */}
               <div>
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Select Species</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -316,7 +313,6 @@ const App: React.FC = () => {
                   </div>
               </div>
 
-              {/* Stats Panel */}
               <div className="bg-black/30 rounded-xl p-4 space-y-4 border border-white/10 shadow-inner">
                   <div className="flex justify-between items-center">
                       <span className="text-gray-400 text-sm">Total e⁻</span>
@@ -341,12 +337,9 @@ const App: React.FC = () => {
                   </div>
               </div>
               
-               {/* Enhanced Stability Meter V3 */}
               <div className={`rounded-2xl p-5 border backdrop-blur-xl relative overflow-hidden transition-all duration-500 ${stability.borderColor} ${stability.bgGlow} ${stability.shadow}`}>
-                  {/* Decorative background glow */}
                   <div className={`absolute -right-12 -top-12 w-40 h-40 bg-gradient-to-br ${stability.gradient} opacity-20 blur-3xl rounded-full pointer-events-none transition-opacity duration-700`}></div>
 
-                  {/* Header Row */}
                   <div className="flex justify-between items-start mb-6 relative z-10">
                       <div>
                           <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Stability Analysis</h3>
@@ -360,7 +353,6 @@ const App: React.FC = () => {
                       </div>
                   </div>
 
-                  {/* Equation Visualization */}
                   <div className="flex items-center justify-center gap-2 text-sm font-mono text-gray-400 mb-8 bg-black/40 py-3 rounded-xl border border-white/5 relative z-10 shadow-inner">
                       <span className="opacity-40 select-none">½</span>
                       <span className="opacity-40 select-none">(</span>
@@ -380,11 +372,8 @@ const App: React.FC = () => {
                       <span className="opacity-40 select-none">)</span>
                   </div>
                   
-                  {/* Meter Track - Clean Design */}
                   <div className="relative z-10 mx-1 mb-2">
-                       {/* Track Background */}
                        <div className="h-2 bg-dark-900 rounded-full border border-white/10 overflow-hidden relative shadow-inner">
-                           {/* Gradient Fill */}
                            <div 
                                 className={`h-full transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] bg-gradient-to-r ${stability.gradient}`}
                                 style={{ width: `${Math.min((bondOrder / 3) * 100, 100)}%` }}
@@ -393,19 +382,14 @@ const App: React.FC = () => {
                             </div>
                        </div>
 
-                       {/* Ticks */}
                        <div className="absolute top-0 left-0 w-full h-full pointer-events-none -mt-1">
                           {[0, 1, 2, 3].map(tick => (
                               <div key={tick} className="absolute top-1/2 -translate-y-1/2 h-3 w-px bg-white/20" style={{ left: `${(tick/3)*100}%` }}>
                                   <span className="absolute top-4 left-1/2 -translate-x-1/2 text-[10px] text-gray-500 font-mono">{tick}</span>
                               </div>
                           ))}
-                          {[0.5, 1.5, 2.5].map(tick => (
-                              <div key={tick} className="absolute top-1/2 -translate-y-1/2 h-1.5 w-px bg-white/10" style={{ left: `${(tick/3)*100}%` }}></div>
-                          ))}
                        </div>
 
-                       {/* Needle */}
                        <div 
                            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-[0_0_10px_white] border-[3px] border-dark-800 transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-20"
                            style={{ left: `${Math.min((bondOrder / 3) * 100, 100)}%`, transform: 'translate(-50%, -50%)' }}
@@ -413,7 +397,6 @@ const App: React.FC = () => {
                   </div>
               </div>
 
-              {/* Actions */}
               <div className="space-y-3">
                   <div className="flex gap-2">
                     <button 
@@ -457,9 +440,7 @@ const App: React.FC = () => {
               </div>
           </div>
 
-          {/* Diagram Area */}
           <div className="flex-1 p-8 relative">
-              {/* Radial Light Effect */}
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,243,255,0.05)_0%,rgba(0,0,0,0.8)_70%)] pointer-events-none"></div>
               
               <MODiagram 
@@ -468,7 +449,6 @@ const App: React.FC = () => {
                   onOrbitalClick={handleOrbitalClick} 
               />
               
-              {/* Visible Rules Card */}
               <div className="absolute top-6 left-6 max-w-sm z-20 pointer-events-none">
                   <div className="bg-dark-900/80 backdrop-blur-xl border border-white/10 rounded-xl p-5 shadow-2xl">
                       <h3 className="text-neon-blue font-bold mb-3 flex items-center gap-2 uppercase text-xs tracking-widest">
@@ -492,7 +472,6 @@ const App: React.FC = () => {
                   </div>
               </div>
 
-               {/* Floating Feedback Toast */}
                {feedback && (
                   <div className={`
                     absolute bottom-8 left-1/2 -translate-x-1/2 max-w-lg w-full z-50
@@ -521,7 +500,6 @@ const App: React.FC = () => {
                       </button>
                   </div>
               )}
-              
           </div>
       </div>
     </div>
