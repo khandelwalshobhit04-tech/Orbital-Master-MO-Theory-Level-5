@@ -114,7 +114,6 @@ const App: React.FC = () => {
       
       const canAdd = electronsPlaced < currentMolecule.totalElectrons;
       
-      // Cycle Logic: 0 -> 1 -> 2 -> 0 (standard pairing cycle)
       if (orb.electrons < orb.capacity) {
          if (canAdd) {
              newOrbitals[orbIndex] = { ...orb, electrons: orb.electrons + 1 };
@@ -153,14 +152,16 @@ const App: React.FC = () => {
       
       const energyGroups = new Map<number, OrbitalData[]>();
       sortedOrbitals.forEach(o => {
-          if (!energyGroups.has(o.energyLevel)) energyGroups.set(o.energyLevel, []);
-          energyGroups.get(o.energyLevel)?.push(o);
+          const level = o.energyLevel;
+          if (!energyGroups.has(level)) energyGroups.set(level, []);
+          energyGroups.get(level)?.push(o);
       });
 
       const energies = Array.from(energyGroups.keys()).sort((a, b) => a - b);
 
       for (const energy of energies) {
           const group = energyGroups.get(energy)!;
+          // Hund's Rule Phase 1: Fill each orbital in the group with 1 electron
           for (const orb of group) {
               if (remaining > 0) {
                   const target = newOrbitals.find(o => o.id === orb.id)!;
@@ -168,6 +169,7 @@ const App: React.FC = () => {
                   remaining--;
               }
           }
+          // Hund's Rule Phase 2: Pair electrons in the group
           for (const orb of group) {
               if (remaining > 0) {
                    const target = newOrbitals.find(o => o.id === orb.id)!;
@@ -195,39 +197,40 @@ const App: React.FC = () => {
           return;
       }
 
-      // 2. Group by energy level to check Aufbau and Hund's
+      // 2. Scientific Validation (Aufbau + Hund's Rule)
       const energyGroups = new Map<number, OrbitalData[]>();
       orbitals.forEach(o => {
-          if (!energyGroups.has(o.energyLevel)) energyGroups.set(o.energyLevel, []);
-          energyGroups.get(o.energyLevel)?.push(o);
+          const level = o.energyLevel;
+          if (!energyGroups.has(level)) energyGroups.set(level, []);
+          energyGroups.get(level)?.push(o);
       });
 
       const sortedEnergies = Array.from(energyGroups.keys()).sort((a, b) => a - b);
-      let lowerLevelFull = true;
+      let lowerLevelMustBeFull = true;
 
       for (let i = 0; i < sortedEnergies.length; i++) {
           const energy = sortedEnergies[i];
           const group = energyGroups.get(energy)!;
-          const totalInGroup = group.reduce((sum, o) => sum + o.electrons, 0);
-          const capacityInGroup = group.length * 2;
-          const hasUnfilledOrbital = group.some(o => o.electrons === 0);
-          const hasPairedElectron = group.some(o => o.electrons === 2);
-
-          // Aufbau: If this level has electrons, but the previous wasn't full
-          if (totalInGroup > 0 && !lowerLevelFull) {
-              setFeedback({ type: 'error', message: "Aufbau Principle violated: Lower energy levels must be completely filled first." });
+          const electronsInGroup = group.reduce((sum, o) => sum + o.electrons, 0);
+          const maxInGroup = group.length * 2;
+          
+          if (electronsInGroup > 0 && !lowerLevelMustBeFull) {
+              setFeedback({ type: 'error', message: "Aufbau Principle violated: Lower energy levels must be completely filled before higher ones." });
               audioService.playError();
               return;
           }
 
-          // Hund's Rule: If there are pairs but also empty orbitals at the same energy level
-          if (hasPairedElectron && hasUnfilledOrbital) {
-              setFeedback({ type: 'error', message: "Hund's Rule violated: Degenerate orbitals must be occupied singly before pairing." });
+          // Hund's Rule Validation: If any orbital is paired (2e), all others in the group must have at least one (1e).
+          const hasPaired = group.some(o => o.electrons === 2);
+          const hasEmpty = group.some(o => o.electrons === 0);
+          
+          if (hasPaired && hasEmpty) {
+              setFeedback({ type: 'error', message: "Hund's Rule violated: Degenerate orbitals must be occupied singly before pairing occurs." });
               audioService.playError();
               return;
           }
 
-          lowerLevelFull = totalInGroup === capacityInGroup;
+          lowerLevelMustBeFull = electronsInGroup === maxInGroup;
       }
 
       setFeedback({ 
@@ -271,7 +274,7 @@ const App: React.FC = () => {
                 <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-neon-blue to-purple-400 filter drop-shadow-[0_0_2px_rgba(0,243,255,0.5)]">
                     Orbital Master
                 </h1>
-                <p className="text-xs text-gray-400">Level 5: Molecular Orbital Theory</p>
+                <p className="text-xs text-gray-400">Level 6: Advanced MO Theory</p>
             </div>
         </div>
 
